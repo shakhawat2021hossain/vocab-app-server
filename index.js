@@ -68,9 +68,9 @@ const usersCollections = client.db('vocab-app').collection('users')
 
 //verify admin
 const verifyAdmin = async (req, res, next) => {
-  const email = req.decoded.email;
+  const email = req.user.email;
   const query = { email: email }
-  const user = await usersDB.findOne(query)
+  const user = await usersCollections.findOne(query)
   const isAdmin = user?.role == 'admin'
   if (!isAdmin) {
     return res.status(403).send({ message: "forbidden access" })
@@ -113,13 +113,13 @@ app.get('/logout', async (req, res) => {
 
 
 // get all lessons
-app.get('/lessons', async (req, res) => {
+app.get('/lessons', verifyToken, async (req, res) => {
   const lessons = await lessonsCollections.find().toArray()
   res.send(lessons)
 })
 
 // add lesson
-app.post('/lesson', async (req, res) => {
+app.post('/lesson', verifyToken, verifyAdmin, async (req, res) => {
   const lesson = req.body;
   const result = await lessonsCollections.insertOne(lesson)
   res.send(result)
@@ -160,10 +160,33 @@ app.put('/user', async (req, res) => {
   const result = await usersCollections.updateOne(query, updateDoc, option)
   res.send(result)
 })
+
 //get all users
 app.get('/users', async (req, res) => {
   const users = await usersCollections.find().toArray()
   res.send(users)
+})
+
+//single user
+app.get('/user/:email', async (req, res) => {
+  const email = req.params.email
+  const query = {email}
+  const user = await usersCollections.findOne(query)
+  res.send(user)
+})
+
+//update user role
+app.patch('/user/role/:email', async (req, res) => {
+  const email = req.params.email;
+  const query = { email }
+  const user = req.body;
+  const updateDoc = {
+    $set: {
+      ...user
+    }
+  }
+  const result = await usersCollections.updateOne(query, updateDoc)
+  res.send(result)
 })
 
 
