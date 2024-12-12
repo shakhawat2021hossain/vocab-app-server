@@ -1,8 +1,3 @@
-
----
-
-### Backend README (`server/README.md`)
-
 ```markdown
 # Japanese Vocabulary Learning Application - Backend
 
