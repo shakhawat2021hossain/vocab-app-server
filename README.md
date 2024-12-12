@@ -1,4 +1,3 @@
-```markdown
 # Japanese Vocabulary Learning Application - Backend
 
 This is the backend of the **Japanese Vocabulary Learning Application**. The backend is built using Node.js, Express.js, and MongoDB to handle authentication, lessons, and vocabulary management.
