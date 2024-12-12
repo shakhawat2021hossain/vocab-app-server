@@ -6,7 +6,7 @@ const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 
-const port = process.env.PORT || 5000
+const port = process.env.PORT || 5000;
 
 // middleware
 const corsOptions = {
@@ -136,13 +136,67 @@ app.get('/lesson/:id', async (req, res) => {
 
 app.patch('/lesson/vocab/:id', async (req, res) => {
   const vocab = req.body
-  console.log(vocab);
+  // console.log(vocab);
   const id = req.params.id
   const query = { _id: new ObjectId(id) }
 
   const result = await lessonsCollections.updateOne(query, { $push: { vocabularies: vocab } });
   res.send(result)
 })
+
+
+app.get('/vocab/:id/:pronunciation', async (req, res) => {
+  const { id, pronunciation } = req.params;
+  const lesson = await lessonsCollections.findOne({ _id: new ObjectId(id) });
+  const vocab = lesson.vocabularies.find(
+    (v) => v.pronunciation === pronunciation
+  );
+  if (vocab) {
+    res.send(vocab)
+  }
+
+})
+app.patch('/vocab/update/:id/:pronunciation', async (req, res) => {
+  const vocab = req.body;
+  const { id, pronunciation } = req.params;
+
+  const lesson = await lessonsCollections.findOne({ _id: new ObjectId(id) });
+
+  if (!lesson) {
+    return res.send({ message: "Lesson not found" });
+  }
+  const vocabIndex = lesson.vocabularies.findIndex(
+    (v) => v.pronunciation === pronunciation
+  );
+
+  if (vocabIndex === -1) {
+    return res.send({ message: "Vocabulary not found" });
+  }
+
+  const result = await lessonsCollections.updateOne(
+    { _id: new ObjectId(id), "vocabularies.pronunciation": pronunciation },
+    { $set: { "vocabularies.$": vocab } }
+  );
+ 
+  res.send(result);
+});
+
+//delete vocab
+app.delete('/vocab/delete/:id/:pronunciation', async (req, res) => {
+  const { id, pronunciation } = req.params;
+  const query = {
+    _id: new ObjectId(id),
+    "vocabularies.pronunciation": pronunciation
+  };
+
+  const result = await lessonsCollections.updateOne(
+    query,
+    { $pull: { vocabularies: { pronunciation } } }
+  );
+
+  res.send(result)
+});
+
 
 //save a user to db
 app.put('/user', async (req, res) => {
@@ -170,7 +224,7 @@ app.get('/users', async (req, res) => {
 //single user
 app.get('/user/:email', async (req, res) => {
   const email = req.params.email
-  const query = {email}
+  const query = { email }
   const user = await usersCollections.findOne(query)
   res.send(user)
 })
