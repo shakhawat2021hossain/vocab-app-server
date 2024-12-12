@@ -4,39 +4,45 @@ require('dotenv').config()
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 
 const port = process.env.PORT || 5000;
 
 // middleware
+
 const corsOptions = {
-  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://vocab-app-1e62c.web.app',
+    'https://vocab-app-1e62c.firebaseapp.com'
+  ],
   credentials: true,
-  optionSuccessStatus: 200,
-}
-app.use(cors(corsOptions))
+  optionsSuccessStatus: 200,
+};
 
-app.use(express.json())
-app.use(cookieParser())
-
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions))
+app.use(express.json());
+app.use(cookieParser());
 
 // Verify Token Middleware
 const verifyToken = async (req, res, next) => {
   const token = req.cookies?.token
-  console.log(token)
+  // console.log(token)
   if (!token) {
     return res.status(401).send({ message: 'unauthorized access' })
   }
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
-      console.log(err)
+      // console.log(err)
       return res.status(401).send({ message: 'unauthorized access' })
     }
     req.user = decoded
     next()
   })
 }
-
 
 
 //connect mongodb
@@ -65,6 +71,7 @@ dbConnect()
 // db collections
 const lessonsCollections = client.db('vocab-app').collection('lessons')
 const usersCollections = client.db('vocab-app').collection('users')
+const tutorialsCollections = client.db('vocab-app').collection('tutorials')
 
 //verify admin
 const verifyAdmin = async (req, res, next) => {
@@ -81,36 +88,6 @@ const verifyAdmin = async (req, res, next) => {
 app.get('/', (req, res) => {
   res.send('Hello from Server..')
 })
-
-
-// authtication
-app.post('/jwt', async (req, res) => {
-  const user = req.body
-  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: '365d',
-  })
-  res.cookie('token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-  }).send({ success: true })
-})
-// Logout
-app.get('/logout', async (req, res) => {
-  try {
-    res
-      .clearCookie('token', {
-        maxAge: 0,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-      })
-      .send({ success: true })
-    console.log('Logout successful')
-  } catch (err) {
-    res.status(500).send(err)
-  }
-})
-
 
 // get all lessons
 app.get('/lessons', verifyToken, async (req, res) => {
@@ -131,6 +108,13 @@ app.get('/lesson/:id', async (req, res) => {
   const query = { _id: new ObjectId(id) }
   const lesson = await lessonsCollections.findOne(query)
   res.send(lesson)
+})
+
+app.delete('/lesson/delete/:id', async (req, res) => {
+  const id = req.params.id
+  const query = { _id: new ObjectId(id) }
+  const result = await lessonsCollections.deleteOne(query)
+  res.send(result)
 })
 
 
@@ -177,7 +161,7 @@ app.patch('/vocab/update/:id/:pronunciation', async (req, res) => {
     { _id: new ObjectId(id), "vocabularies.pronunciation": pronunciation },
     { $set: { "vocabularies.$": vocab } }
   );
- 
+
   res.send(result);
 });
 
@@ -244,6 +228,89 @@ app.patch('/user/role/:email', async (req, res) => {
 })
 
 
+//get all tut
+app.get('/tutorials', async (req, res) => {
+  const tutorials = await tutorialsCollections.find().toArray()
+  res.send(tutorials)
+})
+
+
+// own auth system
+app.post('/register', async (req, res) => {
+  const { name, email, img, password, role } = req.body;
+
+
+  const userExists = await usersCollections.findOne({ email });
+  if (userExists) {
+    return res.status(400).json({ message: 'User already exists' });
+  }
+
+  // Hash password
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password, salt);
+
+  // Create and save the new user
+  const newUser = {
+    name,
+    email,
+    img,
+    role,
+    password: hashedPassword,
+  };
+
+  const result = await usersCollections.insertOne(newUser);
+  res.send(result)
+});
+
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  // Check if user exists
+  const user = await usersCollections.findOne({ email });
+  if (!user) {
+    return res.status(400).json({ message: 'No user Found for this mail' });
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  if (!isPasswordValid) {
+    return res.status(400).json({ message: 'Invalid credentials' });
+  }
+  const payload = {
+    email: user.email,
+    id: user._id,  // Add the user ID or any relevant data to the payload
+  };
+
+  const token = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: '1h', // Set the expiration time
+  });
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+  }).send({ success: true })
+
+});
+
+// Logout
+app.post('/logout', async (req, res) => {
+  try {
+    res
+      .clearCookie('token', {
+        maxAge: 0,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      })
+      .send({ success: true })
+    console.log('Logout successful')
+  } catch (err) {
+    res.status(500).send(err)
+  }
+})
+
+app.get('/protected', verifyToken, async (req, res) => {
+  const user = await usersCollections.findOne({ email: req?.user?.email });
+  res.send(user);
+});
 
 app.listen(port, () => {
   console.log(`Learn Vocab is running on port ${port}`)
