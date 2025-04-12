@@ -31,13 +31,22 @@ app.use(cookieParser());
 const verifyToken = async (req, res, next) => {
   const token = req.cookies?.token
   // console.log(token)
+
   if (!token) {
-    return res.status(401).send({ message: 'unauthorized access' })
+    return res.json({
+      success: false,
+      message: "Not Authorized. Logged In Again",
+    });
   }
+
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
       // console.log(err)
-      return res.status(401).send({ message: 'unauthorized access' })
+      return res.json({
+        success: false,
+        message: "Not Authorized. Logged In Again",
+      });
+
     }
     req.user = decoded
     next()
@@ -72,6 +81,7 @@ dbConnect()
 const lessonsCollections = client.db('vocab-app').collection('lessons')
 const usersCollections = client.db('vocab-app').collection('users')
 const tutorialsCollections = client.db('vocab-app').collection('tutorials')
+const bookmarkCollections = client.db('vocab-app').collection('bookmarks')
 
 //verify admin
 const verifyAdmin = async (req, res, next) => {
@@ -90,7 +100,7 @@ app.get('/', (req, res) => {
 })
 
 // get all lessons
-app.get('/lessons', verifyToken, async (req, res) => {
+app.get('/lessons', async (req, res) => {
   const lessons = await lessonsCollections.find().toArray()
   res.send(lessons)
 })
@@ -103,14 +113,15 @@ app.post('/lesson', verifyToken, verifyAdmin, async (req, res) => {
 
 })
 
-app.get('/lesson/:id', async (req, res) => {
+app.get('/lesson/:id', verifyToken, async (req, res) => {
   const id = req.params.id
+  console.log(id);
   const query = { _id: new ObjectId(id) }
   const lesson = await lessonsCollections.findOne(query)
   res.send(lesson)
 })
 
-app.delete('/lesson/delete/:id', async (req, res) => {
+app.delete('/lesson/delete/:id', verifyToken, verifyAdmin, async (req, res) => {
   const id = req.params.id
   const query = { _id: new ObjectId(id) }
   const result = await lessonsCollections.deleteOne(query)
@@ -118,7 +129,7 @@ app.delete('/lesson/delete/:id', async (req, res) => {
 })
 
 
-app.patch('/lesson/vocab/:id', async (req, res) => {
+app.patch('/lesson/vocab/:id', verifyToken, verifyAdmin, async (req, res) => {
   const vocab = req.body
   // console.log(vocab);
   const id = req.params.id
@@ -166,7 +177,7 @@ app.patch('/vocab/update/:id/:pronunciation', async (req, res) => {
 });
 
 //delete vocab
-app.delete('/vocab/delete/:id/:pronunciation', async (req, res) => {
+app.delete('/vocab/delete/:id/:pronunciation', verifyToken, verifyAdmin, async (req, res) => {
   const { id, pronunciation } = req.params;
   const query = {
     _id: new ObjectId(id),
@@ -200,21 +211,13 @@ app.put('/user', async (req, res) => {
 })
 
 //get all users
-app.get('/users', async (req, res) => {
+app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
   const users = await usersCollections.find().toArray()
   res.send(users)
 })
 
-//single user
-app.get('/user/:email', async (req, res) => {
-  const email = req.params.email
-  const query = { email }
-  const user = await usersCollections.findOne(query)
-  res.send(user)
-})
-
 //update user role
-app.patch('/user/role/:email', async (req, res) => {
+app.patch('/user/role/:email', verifyToken, async (req, res) => {
   const email = req.params.email;
   const query = { email }
   const user = req.body;
@@ -232,6 +235,43 @@ app.patch('/user/role/:email', async (req, res) => {
 app.get('/tutorials', async (req, res) => {
   const tutorials = await tutorialsCollections.find().toArray()
   res.send(tutorials)
+})
+
+// bookmark
+app.post('/bookmark/:id', verifyToken, async (req, res) => {
+  const { id } = req.params
+  // console.log(id);
+
+  const lesson = await lessonsCollections.findOne({ _id: new ObjectId(id) })
+  // console.log(lesson);
+
+  const word = req.body;
+  const user = req.user;
+  const bookmark = { word, lesson, user }
+
+  const result = bookmarkCollections.insertOne(bookmark);
+  res.status(201).json({
+    success: true,
+    message: "Saved to Bookmark"
+  })
+
+})
+
+app.get('/bookmark', verifyToken, async (req, res) => {
+  const bookmarks = await bookmarkCollections.find({ user: req.user }).toArray();
+  res.json(bookmarks)
+})
+
+app.delete('/bookmark/:id', verifyToken, async (req, res) => {
+  const user = req.user;
+  const query = { _id: new ObjectId(req.params.id), user }
+  const result = await bookmarkCollections.deleteOne(query)
+  res.status(200).json({
+    success: true,
+    message: 'Bookmark removed successfully',
+    result
+  });
+
 })
 
 
@@ -275,18 +315,16 @@ app.post('/login', async (req, res) => {
   if (!isPasswordValid) {
     return res.status(400).json({ message: 'Invalid credentials' });
   }
-  const payload = {
-    email: user.email,
-    id: user._id,  // Add the user ID or any relevant data to the payload
-  };
 
-  const token = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: '1h', // Set the expiration time
+
+  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: '7d',
   });
   res.cookie('token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   }).send({ success: true })
 
 });
