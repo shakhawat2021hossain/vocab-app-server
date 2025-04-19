@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
+const nodemailer = require("nodemailer")
 
 const port = process.env.PORT || 5000;
 
@@ -52,6 +53,15 @@ const verifyToken = async (req, res, next) => {
     next()
   })
 }
+
+// nodemailer
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "shakhawat.hossain.web@gmail.com",
+    pass: "cscpwcifkfvecljz"
+  }
+})
 
 
 //connect mongodb
@@ -297,9 +307,21 @@ app.post('/register', async (req, res) => {
     role,
     password: hashedPassword,
   };
-
   const result = await usersCollections.insertOne(newUser);
   res.send(result)
+
+  try {
+    await transporter.sendMail({
+      from: "Learn Vocab <shakhawat.hossain.web@gmail.com>",
+      to: email,
+      subject: "Welcome to Learn Vocab!",
+      html: `<h2>Hello ${name},</h2><p>Thanks for signing up! Let's learn some new words today. 😊</p>`
+    })
+  } catch (error) {
+    console.error("Failed to send welcome email:", error);
+  }
+
+
 });
 
 app.post('/login', async (req, res) => {
