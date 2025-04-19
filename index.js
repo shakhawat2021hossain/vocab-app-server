@@ -367,9 +367,52 @@ app.post('/logout', async (req, res) => {
   }
 })
 
+// forgot pass
+app.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  // console.log(email);
+  const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "15m" })
+  await transporter.sendMail({
+    from: "Learn Vocab <shakhawat.hossain.web@gmail.com>",
+    to: email,
+    subject: "Reset Password Link",
+    text: `http://localhost:5173/reset-password/${token}`
+  })
+  res.json({ message: "Reset link was sent to email" })
+})
+
+app.patch("/reset-password/:token", async (req, res) => {
+  const { token } = req.params;
+  console.log(token);
+  const {password} = req.body;
+  try {
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
+    console.log(decoded);
+
+    const email = decoded.email;
+    const user = await usersCollections.findOne({ email })
+    if (!user) {
+      return res.status(404).json({ message: "Invalid token or user not found" });
+    }
+
+    const salt = await bcrypt.genSalt(10)
+    const hashedPassword = await bcrypt.hash(password, salt)
+
+    const result = await usersCollections.updateOne(
+      { email },
+      { $set: { password: hashedPassword } }
+    )
+    res.json({ message: "Password updated successfully." });
+
+  }
+  catch (err) {
+    console.log(err);
+  }
+})
+
 app.get('/protected', verifyToken, async (req, res) => {
   const user = await usersCollections.findOne({ email: req?.user?.email });
-  res.send(user);
+  res.json({success: true, user});
 });
 
 app.listen(port, () => {
